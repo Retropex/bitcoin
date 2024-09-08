@@ -15,6 +15,7 @@ from test_framework.messages import (
     NODE_P2P_V2,
     NODE_WITNESS,
     NODE_REPLACE_BY_FEE,
+    NODE_PREFERENTIAL_PEERING,
     msg_getdata,
 )
 from test_framework.p2p import P2PInterface
@@ -124,6 +125,7 @@ class NodeNetworkLimitedTest(BitcoinTestFramework):
         node = self.nodes[0].add_p2p_connection(P2PIgnoreInv())
 
         expected_services = NODE_WITNESS | NODE_NETWORK_LIMITED | NODE_REPLACE_BY_FEE
+        expected_services = NODE_WITNESS | NODE_NETWORK_LIMITED | NODE_REPLACE_BY_FEE | NODE_PREFERENTIAL_PEERING
         if self.options.v2transport:
             expected_services |= NODE_P2P_V2
 

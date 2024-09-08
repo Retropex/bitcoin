@@ -1898,6 +1898,9 @@ bool CConnman::AddConnection(const std::string& address, ConnectionType conn_typ
     case ConnectionType::BLOCK_RELAY:
         max_connections = m_max_outbound_block_relay;
         break;
+    case ConnectionType::LIBRE_RELAY:
+        max_connections = m_max_outbound_libre_relay;
+        break;
     // no limit for ADDR_FETCH because -seednode has no limit either
     case ConnectionType::ADDR_FETCH:
         break;
@@ -2662,6 +2665,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect, Spa
         // Only connect out to one peer per ipv4/ipv6 network group (/16 for IPv4).
         int nOutboundFullRelay = 0;
         int nOutboundBlockRelay = 0;
+        int nOutboundLibreRelay = 0;
         int outbound_privacy_network_peers = 0;
         std::set<std::vector<unsigned char>> outbound_ipv46_peer_netgroups;
 
@@ -2670,6 +2674,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect, Spa
             for (const CNode* pnode : m_nodes) {
                 if (pnode->IsFullOutboundConn()) nOutboundFullRelay++;
                 if (pnode->IsBlockOnlyConn()) nOutboundBlockRelay++;
+                if (pnode->IsLibreRelay()) nOutboundLibreRelay++;
 
                 // Make sure our persistent outbound slots to ipv4/ipv6 peers belong to different netgroups.
                 switch (pnode->m_conn_type) {
@@ -2685,6 +2690,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect, Spa
                     case ConnectionType::MANUAL:
                     case ConnectionType::OUTBOUND_FULL_RELAY:
                     case ConnectionType::BLOCK_RELAY:
+                    case ConnectionType::LIBRE_RELAY:
                         const CAddress address{pnode->addr};
                         if (address.IsTor() || address.IsI2P() || address.IsCJDNS()) {
                             // Since our addrman-groups for these networks are
@@ -2713,6 +2719,7 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect, Spa
         auto now = GetTime<std::chrono::microseconds>();
         bool anchor = false;
         bool fFeeler = false;
+        bool libre = false;
         std::optional<Network> preferred_net;
 
         // Determine what type of connection to open. Opening
@@ -2759,6 +2766,9 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect, Spa
             // (similar to how we deal with extra outbound peers).
             next_extra_block_relay = now + rng.rand_exp_duration(EXTRA_BLOCK_RELAY_ONLY_PEER_INTERVAL);
             conn_type = ConnectionType::BLOCK_RELAY;
+        } else if (nOutboundLibreRelay < m_max_outbound_libre_relay) {
+            conn_type = ConnectionType::LIBRE_RELAY;
+            libre = true;
         } else if (now > next_feeler) {
             next_feeler = now + rng.rand_exp_duration(FEELER_INTERVAL);
             conn_type = ConnectionType::FEELER;
@@ -2855,6 +2865,11 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect, Spa
             if (current_time - addr_last_try < 10min && nTries < 30) {
                 continue;
             }
+
+            // if we would like to open a libre connection, requires
+            // the libre service flag to be set
+            if (libre && !HasLibreRelayServiceFlag(addr.nServices))
+                continue;
 
             // for non-feelers, require all the services we'll want,
             // for feelers, only require they be a full node (only because most
