@@ -347,7 +347,7 @@ enum ServiceFlags : uint64_t {
 
     NODE_REPLACE_BY_FEE = (1 << 26),
 
-    NODE_MALICIOUS = (1 << 29),
+    NODE_PREFERENTIAL_PEERING = (1 << 29),
 };
 
 /**
@@ -372,6 +372,14 @@ constexpr ServiceFlags SeedsServiceFlags() { return ServiceFlags(NODE_NETWORK | 
 static inline bool MayHaveUsefulAddressDB(ServiceFlags services)
 {
     return (services & NODE_NETWORK) || (services & NODE_NETWORK_LIMITED);
+}
+
+/**
+ * Checks if a peer with the given service flags enables libre relay.
+ */
+static inline bool HasLibreRelayServiceFlag(ServiceFlags services)
+{
+    return (services & NODE_PREFERENTIAL_PEERING);
 }
 
 /** A CService with information about it as peer */
