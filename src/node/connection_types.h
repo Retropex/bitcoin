@@ -75,6 +75,12 @@ enum class ConnectionType {
      * AddrMan is empty.
      */
     ADDR_FETCH,
+
+    /**
+     * Libre-relay connections are long-lived connections used to relay transactions
+     * with peers accepting the libre standardness policies.
+     */
+    LIBRE_RELAY,
 };
 
 /** Convert ConnectionType enum to a string value */

@@ -45,7 +45,8 @@ const std::vector<std::string> CONNECTION_TYPE_DOC{
         "inbound (initiated by the peer)",
         "manual (added via addnode RPC or -addnode/-connect configuration options; protected from DoS disconnection and not required to be full nodes as other outbound peers are)",
         "addr-fetch (short-lived automatic connection for soliciting addresses)",
-        "feeler (short-lived automatic connection for testing addresses)"
+        "feeler (short-lived automatic connection for testing addresses)",
+        "libre (long-lived automatic connection for libre relay peers)"
 };
 
 ConnectionType ConnectionTypeFromValue(const UniValue& uv)

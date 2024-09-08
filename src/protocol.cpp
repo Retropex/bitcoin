@@ -100,6 +100,7 @@ static std::string serviceFlagToStr(size_t bit)
     case NODE_NETWORK_LIMITED: return "NETWORK_LIMITED";
     case NODE_P2P_V2:          return "P2P_V2";
     case NODE_REPLACE_BY_FEE:  return "REPLACE_BY_FEE?";
+    case NODE_LIBRE_RELAY:     return "LIBRE";
     // Not using default, so we get warned when a case is missing
     }
 
