@@ -987,6 +987,7 @@ public:
             case ConnectionType::OUTBOUND_FULL_RELAY:
             case ConnectionType::BLOCK_RELAY:
             case ConnectionType::ADDR_FETCH:
+            case ConnectionType::LIBRE_RELAY:
                 return true;
         } // no default case, so the compiler can warn about missing cases
 
