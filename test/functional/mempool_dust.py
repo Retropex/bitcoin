@@ -104,6 +104,8 @@ class DustRelayFeeTest(BitcoinTestFramework):
 
         self.test_dustrelay()
 
+        self.restart_node(0, extra_args=["-permitbaremultisig=1"])
+
         # prepare output scripts of each standard type
         _, uncompressed_pubkey = generate_keypair(compressed=False)
         _, pubkey = generate_keypair(compressed=True)

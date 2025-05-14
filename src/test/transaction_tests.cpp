@@ -966,15 +966,14 @@ BOOST_AUTO_TEST_CASE(test_IsStandard)
     CheckIsNotStandard(t, "tx-size");
 
     // Check bare multisig (standard if policy flag g_bare_multi is set)
-    g_bare_multi = true;
+    g_bare_multi = false;
     t.vout[0].scriptPubKey = GetScriptForMultisig(1, {key.GetPubKey()}); // simple 1-of-1
     t.vin.resize(1);
     t.vin[0].scriptSig = CScript() << std::vector<unsigned char>(65, 0);
-    CheckIsStandard(t);
-
-    g_bare_multi = false;
     CheckIsNotStandard(t, "bare-multisig");
-    g_bare_multi = DEFAULT_PERMIT_BAREMULTISIG;
+
+    g_bare_multi = true;
+    CheckIsStandard(t);
 
     // Add dust outputs up to allowed maximum
     assert(t.vout.size() == 1);
