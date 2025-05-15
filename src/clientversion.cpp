@@ -69,9 +69,9 @@ std::string FormatSubVersion(const std::string& name, int nClientVersion, const 
     std::string comments_str;
     if (!comments.empty()) comments_str = strprintf("(%s)", Join(comments, "; "));
     std::string ua = strprintf("/%s:%s%s/", name, FormatVersion(nClientVersion), comments_str);
-    if (!base_name_only) {
-        ua += "Knots:20250305/";
-    }
+    // if (!base_name_only) {
+    //     ua += "Knots:20250305/";
+    // }
     return ua;
 }
 
