@@ -68,13 +68,13 @@ std::string FormatSubVersion(const std::string& name, int nClientVersion, const 
     std::string comments_str;
     if (!comments.empty()) comments_str = strprintf("(%s)", Join(comments, "; "));
     std::string ua = strprintf("/%s:%s%s/", name, FormatVersion(nClientVersion), comments_str);
-    if (!base_name_only) {
-        static const auto ua_knots = []() -> std::string {
-            const auto pos{CLIENT_BUILD.find(".knots")};
-            return "Knots:" + CLIENT_BUILD.substr(pos + 6) + "/";
-        }();
-        ua += ua_knots;
-    }
+    // if (!base_name_only) {
+    //     static const auto ua_knots = []() -> std::string {
+    //         const auto pos{CLIENT_BUILD.find(".knots")};
+    //         return "Knots:" + CLIENT_BUILD.substr(pos + 6) + "/";
+    //     }();
+    //     ua += ua_knots;
+    // }
     return ua;
 }
 
