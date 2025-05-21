@@ -2684,6 +2684,29 @@ CTransactionRef PeerManagerImpl::FindTxForGetData(const Peer::TxRelay& tx_relay,
         }
     }
 
+    // Check if the peer recently announced this tx
+    {
+        LOCK(tx_relay.m_tx_inventory_mutex); // Protect access to m_tx_inventory_known_filter
+        if (tx_relay.m_tx_inventory_known_filter.contains(gtxid.GetHash())) {
+            // Search vExtraTxnForCompact for the transaction
+            for (const auto& tx : vExtraTxnForCompact) {
+                if (tx == nullptr) {
+                    continue;
+                }
+                // Match txid or wtxid based on gtxid type
+                uint256 hash;
+                if (gtxid.IsWtxid()) {
+                    hash = uint256{tx->GetWitnessHash()};
+                } else {
+                    hash = uint256{tx->GetHash()};
+                }
+                if (hash == gtxid.GetHash()) {
+                    return tx;
+                }
+            }
+        }
+    }
+
     return {};
 }
 
@@ -3307,8 +3330,18 @@ void PeerManagerImpl::ProcessInvalidTx(NodeId nodeid, const CTransactionRef& ptx
             // If the result is TX_RECONSIDERABLE, add it to m_lazy_recent_rejects_reconsiderable
             // because we should not download or submit this transaction by itself again, but may
             // submit it as part of a package later.
+            LogDebug(BCLog::MEMPOOLREJ, "%s (wtxid=%s) from peer=%d is reconsiderable: %s\n",
+                ptx->GetHash().ToString(),
+                ptx->GetWitnessHash().ToString(),
+                nodeid,
+                state.ToString());
             RecentRejectsReconsiderableFilter().insert(ptx->GetWitnessHash().ToUint256());
         } else {
+            LogDebug(BCLog::MEMPOOLREJ, "%s (wtxid=%s) from peer=%d is NOT reconsiderable: %s\n",
+                ptx->GetHash().ToString(),
+                ptx->GetWitnessHash().ToString(),
+                nodeid,
+                state.ToString());
             RecentRejectsFilter().insert(ptx->GetWitnessHash().ToUint256());
         }
         m_txrequest.ForgetTxHash(ptx->GetWitnessHash());
