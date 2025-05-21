@@ -2428,6 +2428,29 @@ CTransactionRef PeerManagerImpl::FindTxForGetData(const Peer::TxRelay& tx_relay,
         }
     }
 
+    // Check if the peer recently announced this tx
+    {
+        LOCK(tx_relay.m_tx_inventory_mutex); // Protect access to m_tx_inventory_known_filter
+        if (tx_relay.m_tx_inventory_known_filter.contains(gtxid.GetHash())) {
+            // Search vExtraTxnForCompact for the transaction
+            for (const auto& tx : vExtraTxnForCompact) {
+                if (tx == nullptr) {
+                    continue;
+                }
+                // Match txid or wtxid based on gtxid type
+                uint256 hash;
+                if (gtxid.IsWtxid()) {
+                    hash = uint256{tx->GetWitnessHash()};
+                } else {
+                    hash = uint256{tx->GetHash()};
+                }
+                if (hash == gtxid.GetHash()) {
+                    return tx;
+                }
+            }
+        }
+    }
+
     return {};
 }
 
