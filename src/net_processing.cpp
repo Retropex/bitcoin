@@ -5774,7 +5774,7 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                         }
                         if (tx_relay->m_bloom_filter && !tx_relay->m_bloom_filter->IsRelevantAndUpdate(*txinfo.tx)) continue;
                         // Send
-                        vInv.push_back(inv);
+                        // vInv.push_back(inv);
                         nRelayedTransactions++;
                         if (vInv.size() == MAX_INV_SZ) {
                             MakeAndPushMessage(*pto, NetMsgType::INV, vInv);
