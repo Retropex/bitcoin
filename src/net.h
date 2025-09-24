@@ -65,8 +65,6 @@ static const unsigned int MAX_PROTOCOL_MESSAGE_LENGTH = 4 * 1000 * 1000;
 static const unsigned int MAX_SUBVERSION_LENGTH = 256;
 /** Maximum number of automatic outgoing nodes over which we'll relay everything (blocks, tx, addrs, etc) */
 static const int MAX_OUTBOUND_FULL_RELAY_CONNECTIONS = 8;
-/** Maximum number of automatic libre-relay peers */
-static const int MAX_LIBRE_RELAY_CONNECTIONS = 4;
 /** Maximum number of addnode outgoing nodes */
 static const int MAX_ADDNODE_CONNECTIONS = 8;
 /** Maximum number of block-relay-only outgoing connections */
@@ -77,6 +75,8 @@ static const int MAX_FEELER_CONNECTIONS = 1;
 static const bool DEFAULT_LISTEN = true;
 /** The maximum number of peer connections to maintain. */
 static const unsigned int DEFAULT_MAX_PEER_CONNECTIONS = 125;
+/** Maximum number of automatic libre-relay peers */
+static const int MAX_LIBRE_RELAY_CONNECTIONS = DEFAULT_MAX_PEER_CONNECTIONS;
 /** The default for -maxuploadtarget. 0 = Unlimited */
 static const std::string DEFAULT_MAX_UPLOAD_TARGET{"0M"};
 /** Default for blocks only*/
