@@ -97,6 +97,7 @@ BASE_SCRIPTS = [
     'feature_taproot.py',
     'feature_reduced_data_temporary_deployment.py',
     'feature_uasf_max_activation_height.py',
+    'feature_uasf_reduced_data.py',
     'feature_block.py',
     'mempool_ephemeral_dust.py',
     'wallet_conflicts.py --legacy-wallet',
