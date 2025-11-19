@@ -18,6 +18,7 @@
 #include <consensus/tx_verify.h>
 #include <consensus/validation.h>
 #include <cuckoocache.h>
+#include <deploymentinfo.h>
 #include <flatfile.h>
 #include <hash.h>
 #include <kernel/chain.h>
@@ -2686,6 +2687,7 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
     return flags;
 }
 
+static bool ContextualCheckBlockHeaderVolatile(const CBlockHeader& block, BlockValidationState& state, const ChainstateManager& chainman, const CBlockIndex* pindexPrev) EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
 
 /** Apply the effects of this block (with given index) on the UTXO set represented by coins.
  *  Validity checks that depend on the UTXO set are also done; ConnectBlock()
@@ -2730,6 +2732,11 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     // verify that the view's current state corresponds to the previous block
     uint256 hashPrevBlock = pindex->pprev == nullptr ? uint256() : pindex->pprev->GetBlockHash();
     assert(hashPrevBlock == view.GetBestBlock());
+
+    if (!ContextualCheckBlockHeaderVolatile(block, state, m_chainman, pindex->pprev)) {
+        LogError("%s: Consensus::ContextualCheckBlockHeaderVolatile: %s\n", __func__, state.ToString());
+        return false;
+    }
 
     m_chainman.num_blocks_total++;
 
@@ -4597,6 +4604,55 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
         assert(blockindex_old);
         if (IsThisSoftwareExpired(blockindex_old->GetMedianTimePast())) {
             return state.Invalid(BlockValidationResult::BLOCK_TIME_FUTURE, "node-expired", "node software has expired");
+        }
+    }
+
+    if (!ContextualCheckBlockHeaderVolatile(block, state, chainman, pindexPrev)) return false;
+
+    return true;
+}
+
+/** Context-dependent validity checks, but rechecked in ConnectBlock().
+ *  Note that -reindex-chainstate skips the validation that happens here!
+ */
+static bool ContextualCheckBlockHeaderVolatile(const CBlockHeader& block, BlockValidationState& state, const ChainstateManager& chainman, const CBlockIndex* pindexPrev) EXCLUSIVE_LOCKS_REQUIRED(::cs_main)
+{
+    const Consensus::Params& consensusParams = chainman.GetConsensus();
+
+    // BIP148-style mandatory signaling for deployments approaching max_activation_height
+    // Enforce signaling during the period before forced lock-in to help old nodes activate naturally
+    const int nPeriod = consensusParams.nMinerConfirmationWindow;
+    const int nHeight = pindexPrev == nullptr ? 0 : pindexPrev->nHeight + 1;
+
+    for (int i = 0; i < (int)Consensus::MAX_VERSION_BITS_DEPLOYMENTS; i++) {
+        const Consensus::DeploymentPos pos = static_cast<Consensus::DeploymentPos>(i);
+        const auto& deployment = consensusParams.vDeployments[pos];
+
+        // Only enforce if max_activation_height is set for this deployment
+        if (deployment.max_activation_height < std::numeric_limits<int>::max()) {
+            // Calculate enforcement window: 1 period before forced lock-in
+            // Lock-in happens at (max_activation_height - nPeriod)
+            // So enforce signaling from (max_activation_height - 2*nPeriod) to (max_activation_height - nPeriod)
+            const int enforcement_start = deployment.max_activation_height - (2 * nPeriod);
+            const int enforcement_end = deployment.max_activation_height - nPeriod;
+
+            if (nHeight >= enforcement_start && nHeight < enforcement_end) {
+                // Check deployment state - only enforce during STARTED (stop once LOCKED_IN or ACTIVE)
+                const ThresholdState deployment_state = chainman.m_versionbitscache.State(pindexPrev, consensusParams, pos);
+                if (deployment_state == ThresholdState::STARTED) {
+                    // Check if block signals for this deployment
+                    const bool fVersionBits = (block.nVersion & VERSIONBITS_TOP_MASK) == VERSIONBITS_TOP_BITS;
+                    const bool fDeploymentBit = (block.nVersion & (uint32_t{1} << deployment.bit)) != 0;
+
+                    if (!(fVersionBits && fDeploymentBit)) {
+                        const std::string deployment_name = VersionBitsDeploymentInfo[i].name;
+                        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
+                                           "bad-version-" + deployment_name,
+                                           strprintf("Block must signal for %s approaching max_activation_height=%d",
+                                                   deployment_name, deployment.max_activation_height));
+                    }
+                }
+            }
         }
     }
 

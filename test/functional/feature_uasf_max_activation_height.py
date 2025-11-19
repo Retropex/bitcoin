@@ -156,7 +156,26 @@ class MaxActivationHeightTest(BitcoinTestFramework):
         # Period 2 (288-431): STARTED - forced lock-in will occur at end of this period
         self.log.info("\n--- Period 2 (blocks 288-431): STARTED ---")
         self.log.info("Forced lock-in will occur at block 432 (max_activation_height - nPeriod)")
-        self.mine_blocks(node, 144, signal=False)
+
+        # Try to mine block 288 without signaling - should be REJECTED
+        self.log.info("\nNEGATIVE TEST: Attempting to mine block 288 without signaling...")
+        tip = node.getbestblockhash()
+        height = node.getblockcount() + 1
+        tip_header = node.getblockheader(tip)
+        block_time = tip_header['time'] + 1
+        block = create_block(int(tip, 16), create_coinbase(height), ntime=block_time)
+        block.nVersion = VERSIONBITS_TOP_BITS  # No signaling bit
+        add_witness_commitment(block)
+        block.solve()
+        result = node.submitblock(block.serialize().hex())
+        self.log.info(f"Submitblock result (should be rejected): {result}")
+        # Block should be rejected - check we're still at block 287
+        assert_equal(node.getblockcount(), 287)
+        self.log.info("SUCCESS: Block without signaling was correctly REJECTED during enforcement window")
+
+        # Now mine Period 2 with proper signaling
+        self.log.info("\nMining Period 2 with proper signaling...")
+        self.mine_blocks(node, 144, signal=True)
         assert_equal(node.getblockcount(), 431)
         status, since = self.get_status(node)
         self.log.info(f"Block 431: Status={status}")
@@ -190,6 +209,9 @@ class MaxActivationHeightTest(BitcoinTestFramework):
         self.log.info("\n=== TEST 1 COMPLETE ===")
         self.log.info("Summary: max_activation_height=576 test passed")
         self.log.info("- Deployment activated at height 576 via forced lock-in at 432")
+        self.log.info("- Mandatory signaling enforced during blocks 288-431 (BIP148-style)")
+        self.log.info("- Non-signaling blocks rejected during enforcement window")
+        self.log.info("- Non-signaling blocks accepted outside enforcement window")
 
         # Test 2: Deployment without max_height requires signaling
         self.log.info("\n\n=== TEST 2: Deployment without max_height requires signaling ===")
@@ -274,9 +296,15 @@ class MaxActivationHeightTest(BitcoinTestFramework):
         node = self.nodes[3]
 
         # Activate via max_height (max_height=432)
-        # Mine to block 287 (through periods 0 and 1)
-        self.log.info("Mining through periods 0 and 1 to block 287...")
-        self.mine_blocks(node, 287, signal=False)
+        # Mine to block 143 (period 0) without signaling
+        self.log.info("Mining period 0 (blocks 0-143) without signaling...")
+        self.mine_blocks(node, 143, signal=False)
+        assert_equal(node.getblockcount(), 143)
+
+        # Mine through enforcement window (blocks 144-287) WITH signaling
+        # Enforcement window for max_height=432 is [144, 288)
+        self.log.info("Mining blocks 144-287 with signaling (enforcement window)...")
+        self.mine_blocks(node, 144, signal=True)
         assert_equal(node.getblockcount(), 287)
         status, since = self.get_status(node)
         assert_equal(status, 'started')
@@ -315,8 +343,15 @@ class MaxActivationHeightTest(BitcoinTestFramework):
 
         # This node has max_activation_height=432 AND active_duration=144
         # Should activate at 432 via max_height, then expire at 432+144=576
-        self.log.info("Mining through periods 0 and 1 to block 287...")
-        self.mine_blocks(node, 287, signal=False)
+        # Mine to block 143 (period 0) without signaling
+        self.log.info("Mining period 0 (blocks 0-143) without signaling...")
+        self.mine_blocks(node, 143, signal=False)
+        assert_equal(node.getblockcount(), 143)
+
+        # Mine through enforcement window (blocks 144-287) WITH signaling
+        # Enforcement window for max_height=432 is [144, 288)
+        self.log.info("Mining blocks 144-287 with signaling (enforcement window)...")
+        self.mine_blocks(node, 144, signal=True)
         assert_equal(node.getblockcount(), 287)
         status, since = self.get_status(node)
         self.log.info(f"Block 287: Status={status}")
