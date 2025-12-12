@@ -373,6 +373,17 @@ jobs:
             file-env: './ci/test/00_setup_env_native_msan.sh'
 
     steps:
+      - name: Free disk space
+        if: ${{ needs.runners.outputs.use-cirrus-runners != 'true' }}
+        run: |
+          # Free up disk space on GitHub-hosted runners
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune --all --force || true
+          df -h
+
       - *CHECKOUT
 
       - name: Configure environment
