@@ -296,6 +296,38 @@ using NodeRef = miniscript::NodeRef<CPubKey>;
 using miniscript::operator""_mst;
 using Node = miniscript::Node<CPubKey>;
 
+/** Check if a miniscript node or any of its children uses OP_IF/OP_NOTIF fragments.
+ *  These fragments are forbidden in tapscript under REDUCED_DATA rules:
+ *  - WRAP_D: OP_DUP OP_IF [X] OP_ENDIF
+ *  - WRAP_J: OP_SIZE OP_0NOTEQUAL OP_IF [X] OP_ENDIF
+ *  - OR_C:   [X] OP_NOTIF [Y] OP_ENDIF
+ *  - OR_D:   [X] OP_IFDUP OP_NOTIF [Y] OP_ENDIF
+ *  - OR_I:   OP_IF [X] OP_ELSE [Y] OP_ENDIF
+ *  - ANDOR:  [X] OP_NOTIF [Z] OP_ELSE [Y] OP_ENDIF
+ */
+bool UsesOpIf(const NodeRef& root) {
+    for (std::vector stack{root.get()}; !stack.empty();) {
+        const Node* ref{stack.back()};
+        stack.pop_back();
+
+        switch (ref->fragment) {
+            case Fragment::WRAP_D:
+            case Fragment::WRAP_J:
+            case Fragment::OR_C:
+            case Fragment::OR_D:
+            case Fragment::OR_I:
+            case Fragment::ANDOR:
+                return true;
+            default:
+                break;
+        }
+        for (const auto& sub : ref->subs) {
+            stack.push_back(sub.get());
+        }
+    }
+    return false;
+}
+
 /** Compute all challenges (pubkeys, hashes, timelocks) that occur in a given Miniscript. */
 std::set<Challenge> FindChallenges(const NodeRef& root)
 {
@@ -393,6 +425,8 @@ void TestSatisfy(const KeyConverter& converter, const std::string& testcase, con
                 // Test non-malleable satisfaction.
                 ScriptError serror;
                 bool res = VerifyScript(CScript(), script_pubkey, &witness_nonmal, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror);
+                // OP_IF/NOTIF are forbidden in tapscript under REDUCED_DATA rules (but allowed in P2WSH/P2SH).
+                const bool uses_opif_in_tapscript = miniscript::IsTapscript(converter.MsContext()) && UsesOpIf(node);
                 // Non-malleable satisfactions are guaranteed to be valid if ValidSatisfactions(), unless REDUCED_DATA rules are violated.
                 if (node->ValidSatisfactions()) {
                     BOOST_CHECK(res ||
@@ -400,7 +434,7 @@ void TestSatisfy(const KeyConverter& converter, const std::string& testcase, con
                                 serror == ScriptError::SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM ||
                                 serror == ScriptError::SCRIPT_ERR_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION ||
                                 serror == ScriptError::SCRIPT_ERR_DISCOURAGE_OP_SUCCESS ||
-                                serror == ScriptError::SCRIPT_ERR_TAPSCRIPT_MINIMALIF);
+                                (uses_opif_in_tapscript && serror == ScriptError::SCRIPT_ERR_TAPSCRIPT_MINIMALIF));
                 }
                 // More detailed: non-malleable satisfactions must be valid, or could fail with ops count error (if CheckOpsLimit failed),
                 // or with a stack size error (if CheckStackSize check fails), or with REDUCED_DATA-related errors.
@@ -411,13 +445,15 @@ void TestSatisfy(const KeyConverter& converter, const std::string& testcase, con
                             (serror == ScriptError::SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) ||
                             (serror == ScriptError::SCRIPT_ERR_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION) ||
                             (serror == ScriptError::SCRIPT_ERR_DISCOURAGE_OP_SUCCESS) ||
-                            (serror == ScriptError::SCRIPT_ERR_TAPSCRIPT_MINIMALIF));
+                            (uses_opif_in_tapscript && serror == ScriptError::SCRIPT_ERR_TAPSCRIPT_MINIMALIF));
             }
 
             if (mal_success && (!nonmal_success || witness_mal.stack != witness_nonmal.stack)) {
                 // Test malleable satisfaction only if it's different from the non-malleable one.
                 ScriptError serror;
                 bool res = VerifyScript(CScript(), script_pubkey, &witness_mal, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror);
+                // OP_IF/NOTIF are forbidden in tapscript under REDUCED_DATA rules (but allowed in P2WSH/P2SH).
+                const bool uses_opif_in_tapscript = miniscript::IsTapscript(converter.MsContext()) && UsesOpIf(node);
                 // Malleable satisfactions are not guaranteed to be valid under any conditions, but they can only
                 // fail due to stack or ops limits, or REDUCED_DATA-related errors.
                 BOOST_CHECK(res ||
@@ -427,7 +463,7 @@ void TestSatisfy(const KeyConverter& converter, const std::string& testcase, con
                             serror == ScriptError::SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM ||
                             serror == ScriptError::SCRIPT_ERR_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION ||
                             serror == ScriptError::SCRIPT_ERR_DISCOURAGE_OP_SUCCESS ||
-                            serror == ScriptError::SCRIPT_ERR_TAPSCRIPT_MINIMALIF);
+                            (uses_opif_in_tapscript && serror == ScriptError::SCRIPT_ERR_TAPSCRIPT_MINIMALIF));
             }
 
             if (node->IsSane()) {

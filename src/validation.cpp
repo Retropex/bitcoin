@@ -1536,6 +1536,13 @@ bool MemPoolAccept::ConsensusScriptChecks(const ATMPArgs& args, Workspace& ws)
     unsigned int currentBlockScriptVerifyFlags{GetBlockScriptFlags(*m_active_chainstate.m_chain.Tip(), m_active_chainstate.m_chainman)};
     if (!CheckInputsFromMempoolAndCache(tx, state, m_view, m_pool, currentBlockScriptVerifyFlags,
                                         ws.m_precomputed_txdata, m_active_chainstate.CoinsTip(), GetValidationCache())) {
+        // If ignore_rejects was used to bypass policy flags, this failure is expected
+        // when consensus rules (like REDUCED_DATA) are stricter than the bypassed policy.
+        // In this case, we return false with the rejection from state rather than crashing.
+        if (!args.m_ignore_rejects.empty()) {
+            LogPrintf("ConsensusScriptChecks failed after PolicyScriptChecks bypass via ignore_rejects: %s, %s\n", hash.ToString(), state.ToString());
+            return false;
+        }
         LogPrintf("BUG! PLEASE REPORT THIS! CheckInputScripts failed against latest-block but not STANDARD flags %s, %s\n", hash.ToString(), state.ToString());
         return Assume(false);
     }
@@ -2904,11 +2911,12 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     std::vector<PrecomputedTransactionData> txsdata(block.vtx.size());
 
     // For BIP9 deployments, get the activation height dynamically
-    const auto reduced_data_start_height = DeploymentActiveAt(*pindex, m_chainman, Consensus::DEPLOYMENT_REDUCED_DATA)
+    const bool reduced_data_active = DeploymentActiveAt(*pindex, m_chainman, Consensus::DEPLOYMENT_REDUCED_DATA);
+    const auto reduced_data_start_height = reduced_data_active
         ? m_chainman.m_versionbitscache.StateSinceHeight(pindex->pprev, params.GetConsensus(), Consensus::DEPLOYMENT_REDUCED_DATA)
         : std::numeric_limits<int>::max();
 
-    const auto chk_input_rules{DeploymentActiveAt(*pindex, m_chainman, Consensus::DEPLOYMENT_REDUCED_DATA) ? CheckTxInputsRules::OutputSizeLimit : CheckTxInputsRules::None};
+    const auto chk_input_rules{reduced_data_active ? CheckTxInputsRules::OutputSizeLimit : CheckTxInputsRules::None};
 
     std::vector<int> prevheights;
     CAmount nFees = 0;

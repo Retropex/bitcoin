@@ -264,6 +264,21 @@ class TestNode():
 
         # add environment variable LIBC_FATAL_STDERR_=1 so that libc errors are written to stderr and not the terminal
         subp_env = dict(os.environ, LIBC_FATAL_STDERR_="1")
+
+        # On macOS, set DYLD_LIBRARY_PATH so bitcoind can find dynamic libraries (libevent, etc.)
+        # This is needed because CMAKE_SKIP_INSTALL_RPATH is set to preserve reproducible builds
+        if platform.system() == "Darwin":
+            try:
+                homebrew_prefix = subprocess.check_output(["brew", "--prefix"], encoding='utf8', stderr=subprocess.DEVNULL).strip()
+                lib_paths = [
+                    os.path.join(homebrew_prefix, "lib"),
+                    os.path.join(homebrew_prefix, "opt", "libevent", "lib"),
+                ]
+                existing = os.environ.get("DYLD_LIBRARY_PATH", "")
+                subp_env["DYLD_LIBRARY_PATH"] = ":".join(lib_paths + ([existing] if existing else []))
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                pass  # Homebrew not installed, skip
+
         if env is not None:
             subp_env.update(env)
 

@@ -316,6 +316,38 @@ template<typename... Args> NodeRef MakeNodeRef(Args&&... args) {
     return miniscript::MakeNodeRef<CPubKey>(miniscript::internal::NoDupCheck{}, std::forward<Args>(args)...);
 }
 
+/** Check if a miniscript node or any of its children uses OP_IF/OP_NOTIF fragments.
+ *  These fragments are forbidden in tapscript under REDUCED_DATA rules:
+ *  - WRAP_D: OP_DUP OP_IF [X] OP_ENDIF
+ *  - WRAP_J: OP_SIZE OP_0NOTEQUAL OP_IF [X] OP_ENDIF
+ *  - OR_C:   [X] OP_NOTIF [Y] OP_ENDIF
+ *  - OR_D:   [X] OP_IFDUP OP_NOTIF [Y] OP_ENDIF
+ *  - OR_I:   OP_IF [X] OP_ELSE [Y] OP_ENDIF
+ *  - ANDOR:  [X] OP_NOTIF [Z] OP_ELSE [Y] OP_ENDIF
+ */
+bool UsesOpIf(const NodeRef& root) {
+    for (std::vector stack{root.get()}; !stack.empty();) {
+        const Node* ref{stack.back()};
+        stack.pop_back();
+
+        switch (ref->fragment) {
+            case Fragment::WRAP_D:
+            case Fragment::WRAP_J:
+            case Fragment::OR_C:
+            case Fragment::OR_D:
+            case Fragment::OR_I:
+            case Fragment::ANDOR:
+                return true;
+            default:
+                break;
+        }
+        for (const auto& sub : ref->subs) {
+            stack.push_back(sub.get());
+        }
+    }
+    return false;
+}
+
 /** Information about a yet to be constructed Miniscript node. */
 struct NodeInfo {
     //! The type of this node
@@ -1132,13 +1164,23 @@ void TestNode(const MsCtx script_ctx, const NodeRef& node, FuzzedDataProvider& p
         SatisfactionToWitness(script_ctx, witness_nonmal, script, builder);
         ScriptError serror;
         bool res = VerifyScript(DUMMY_SCRIPTSIG, script_pubkey, &witness_nonmal, STANDARD_SCRIPT_VERIFY_FLAGS, CHECKER_CTX, &serror);
-        // Non-malleable satisfactions are guaranteed to be valid if ValidSatisfactions().
-        if (node->ValidSatisfactions()) assert(res);
+        // Non-malleable satisfactions are guaranteed to be valid if ValidSatisfactions(),
+        // unless they fail due to REDUCED_DATA restrictions (OP_IF/NOTIF forbidden in tapscript).
+        // This only applies to tapscript context where the node uses OP_IF/NOTIF fragments.
+        const bool uses_opif_in_tapscript = miniscript::IsTapscript(script_ctx) && UsesOpIf(node);
+        if (node->ValidSatisfactions()) {
+            assert(res || (uses_opif_in_tapscript && serror == ScriptError::SCRIPT_ERR_TAPSCRIPT_MINIMALIF));
+        }
         // More detailed: non-malleable satisfactions must be valid, or could fail with ops count error (if CheckOpsLimit failed),
-        // or with a stack size error (if CheckStackSize check failed).
+        // or with a stack size error (if CheckStackSize check failed), or with errors from REDUCED_DATA restrictions.
         assert(res ||
                (!node->CheckOpsLimit() && serror == ScriptError::SCRIPT_ERR_OP_COUNT) ||
-               (!node->CheckStackSize() && serror == ScriptError::SCRIPT_ERR_STACK_SIZE));
+               (!node->CheckStackSize() && serror == ScriptError::SCRIPT_ERR_STACK_SIZE) ||
+               serror == ScriptError::SCRIPT_ERR_PUSH_SIZE ||
+               serror == ScriptError::SCRIPT_ERR_TAPSCRIPT_MINIMALIF ||
+               serror == ScriptError::SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM ||
+               serror == ScriptError::SCRIPT_ERR_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION ||
+               serror == ScriptError::SCRIPT_ERR_DISCOURAGE_OP_SUCCESS);
     }
 
     if (mal_success && (!nonmal_success || witness_mal.stack != witness_nonmal.stack)) {
@@ -1148,8 +1190,14 @@ void TestNode(const MsCtx script_ctx, const NodeRef& node, FuzzedDataProvider& p
         ScriptError serror;
         bool res = VerifyScript(DUMMY_SCRIPTSIG, script_pubkey, &witness_mal, STANDARD_SCRIPT_VERIFY_FLAGS, CHECKER_CTX, &serror);
         // Malleable satisfactions are not guaranteed to be valid under any conditions, but they can only
-        // fail due to stack or ops limits.
-        assert(res || serror == ScriptError::SCRIPT_ERR_OP_COUNT || serror == ScriptError::SCRIPT_ERR_STACK_SIZE);
+        // fail due to stack or ops limits, or due to REDUCED_DATA restrictions.
+        assert(res || serror == ScriptError::SCRIPT_ERR_OP_COUNT ||
+               serror == ScriptError::SCRIPT_ERR_STACK_SIZE ||
+               serror == ScriptError::SCRIPT_ERR_PUSH_SIZE ||
+               serror == ScriptError::SCRIPT_ERR_TAPSCRIPT_MINIMALIF ||
+               serror == ScriptError::SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM ||
+               serror == ScriptError::SCRIPT_ERR_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION ||
+               serror == ScriptError::SCRIPT_ERR_DISCOURAGE_OP_SUCCESS);
     }
 
     if (node->IsSane()) {

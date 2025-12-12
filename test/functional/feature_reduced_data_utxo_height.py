@@ -24,7 +24,6 @@ from test_framework.blocktools import (
     add_witness_commitment,
 )
 from test_framework.messages import (
-    COIN,
     COutPoint,
     CTransaction,
     CTxIn,
@@ -36,7 +35,6 @@ from test_framework.script import (
     CScript,
     OP_TRUE,
     OP_DROP,
-    hash256,
 )
 from test_framework.script_util import (
     script_to_p2wsh_script,
@@ -208,9 +206,6 @@ class ReducedDataUTXOHeightTest(BitcoinTestFramework):
         current_height = node.getblockcount()
 
         # Now rewind to before activation to create test UTXOs
-        # Save the tip so we can restore later
-        activation_tip = node.getbestblockhash()
-
         # Rewind to 20 blocks before activation
         target_height = ACTIVATION_HEIGHT - 20
         blocks_to_invalidate = current_height - target_height
@@ -219,6 +214,8 @@ class ReducedDataUTXOHeightTest(BitcoinTestFramework):
             node.invalidateblock(node.getbestblockhash())
 
         assert_equal(node.getblockcount(), target_height)
+        # Rescan wallet UTXOs after reorg
+        wallet.rescan_utxos()
 
         # ======================================================================
         # Test 1: Create OLD UTXO before activation
@@ -322,6 +319,8 @@ class ReducedDataUTXOHeightTest(BitcoinTestFramework):
 
         assert_equal(node.getblockcount(), ACTIVATION_HEIGHT - 1)
         self.log.info(f"        Rewound to height {node.getblockcount()}")
+        # Rescan wallet UTXOs after reorg
+        wallet.rescan_utxos()
 
         # Create UTXO exactly at activation height
         boundary_funding_tx, boundary_spending_tx = self.create_p2wsh_funding_and_spending_tx(
@@ -359,6 +358,8 @@ class ReducedDataUTXOHeightTest(BitcoinTestFramework):
         blocks_to_invalidate = node.getblockcount() - (ACTIVATION_HEIGHT - 20)
         for _ in range(blocks_to_invalidate):
             node.invalidateblock(node.getbestblockhash())
+        # Rescan wallet UTXOs after reorg
+        wallet.rescan_utxos()
 
         # Create OLD UTXO at height before activation
         old_mixed_funding, old_mixed_spending = self.create_p2wsh_funding_and_spending_tx(
@@ -432,7 +433,7 @@ class ReducedDataUTXOHeightTest(BitcoinTestFramework):
         result = node.submitblock(block.serialize().hex())
         assert result is not None and 'mandatory-script-verify-flag-failed' in result, f"Expected rejection, got: {result}"
 
-        self.log.info(f"✓ SUCCESS: Mixed transaction REJECTED (new input violated rules, even though old input was exempt)")
+        self.log.info("✓ SUCCESS: Mixed transaction REJECTED (new input violated rules, even though old input was exempt)")
 
         # Restore chain
         node.reconsiderblock(current_tip2)

@@ -18,58 +18,29 @@ This test verifies all 7 consensus rules enforced by DEPLOYMENT_REDUCED_DATA:
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.wallet import MiniWallet
 from test_framework.messages import (
-    CBlock,
     COutPoint,
     CTransaction,
     CTxIn,
     CTxInWitness,
     CTxOut,
-    COIN,
-    MAX_OP_RETURN_RELAY,
 )
-from test_framework.p2p import P2PDataStore
 from test_framework.script import (
     ANNEX_TAG,
     CScript,
     CScriptOp,
-    is_op_success,
-    LEAF_VERSION_TAPSCRIPT,
     OP_0,
     OP_1,
     OP_2,
-    OP_3,
-    OP_4,
-    OP_5,
-    OP_6,
-    OP_7,
-    OP_8,
-    OP_9,
-    OP_10,
-    OP_11,
-    OP_12,
-    OP_13,
-    OP_14,
-    OP_15,
-    OP_16,
     OP_CHECKSIG,
-    OP_CHECKSIGADD,
     OP_CHECKMULTISIG,
     OP_DROP,
-    OP_DUP,
-    OP_EQUAL,
-    OP_EQUALVERIFY,
-    OP_HASH160,
     OP_IF,
     OP_NOTIF,
     OP_ENDIF,
-    OP_PUSHDATA1,
-    OP_PUSHDATA2,
     OP_RETURN,
     OP_TRUE,
-    SIGHASH_ALL,
     SIGHASH_DEFAULT,
     hash160,
-    sha256,
     taproot_construct,
     TaprootSignatureHash,
 )
@@ -84,17 +55,13 @@ from test_framework.script_util import (
 )
 from test_framework.util import (
     assert_equal,
-    assert_raises_rpc_error,
 )
 from test_framework.key import (
-    ECKey,
     compute_xonly_pubkey,
     generate_privkey,
     sign_schnorr,
     tweak_add_privkey,
 )
-from io import BytesIO
-import struct
 
 
 # Constants from UASF-ReducedData specification
@@ -208,7 +175,7 @@ class UASFReducedDataTest(BitcoinTestFramework):
         tx_invalid = self.create_test_transaction(script_opreturn_85, value=0)
         result = node.testmempoolaccept([tx_invalid.serialize().hex()])[0]
         assert_equal(result['allowed'], False)
-        if result['allowed'] == False:
+        if not result['allowed']:
             self.log.info(f"  ✓ OP_RETURN with {len(script_opreturn_85)} bytes rejected")
 
     def test_pushdata_size_limit(self):
@@ -340,7 +307,7 @@ class UASFReducedDataTest(BitcoinTestFramework):
         self.log.info(f"  ✓ Witness v{version} spending correctly rejected ({result['reject-reason']})")
 
         # All undefined versions (v2-v16) are validated identically
-        self.log.info(f"  ✓ Witness versions v2-v16 are all similarly rejected")
+        self.log.info("  ✓ Witness versions v2-v16 are all similarly rejected")
 
     def test_taproot_annex_rejection(self):
         """Test spec 4: Witness stacks with a Taproot annex are invalid."""
