@@ -109,6 +109,15 @@ bool WalletInit::ParameterInteraction() const
          return InitError(Untranslated("A version conflict was detected between the run-time BerkeleyDB library and the one used during compilation."));
      }
 #endif
+    // Early validation: check for invalid -nowallet values (e.g., -nowallet=0)
+    // This must happen before wallet loading to prevent hangs on invalid input
+    for (const auto& wallet : gArgs.GetSettingsList("wallet")) {
+        if (!wallet.isStr()) {
+            return InitError(_("Invalid value detected for '-wallet' or '-nowallet'. "
+                              "'-wallet' requires a string value, while '-nowallet' accepts only '1' to disable all wallets"));
+        }
+    }
+
     if (gArgs.GetBoolArg("-disablewallet", DEFAULT_DISABLE_WALLET)) {
         for (const std::string& wallet : gArgs.GetArgs("-wallet")) {
             LogPrintf("%s: parameter interaction: -disablewallet -> ignoring -wallet=%s\n", __func__, wallet);
