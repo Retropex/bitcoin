@@ -10,7 +10,6 @@
 #include <map>
 #include <optional>
 #include <string>
-#include <optional>
 
 struct bilingual_str;
 struct FlatSigningProvider;

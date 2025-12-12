@@ -14,8 +14,11 @@
 #if !defined(DISABLE_OPTIMIZED_SHA256)
 #include <compat/cpuid.h>
 
-#if defined(__linux__) && defined(ENABLE_ARM_SHANI)
+#if defined(__linux__) && (defined(ENABLE_ARM_SHANI) || defined(ENABLE_POWER8))
 #include <sys/auxv.h>
+#endif
+
+#if defined(__linux__) && defined(ENABLE_ARM_SHANI)
 #include <asm/hwcap.h>
 #endif
 
@@ -63,7 +66,6 @@ void Transform_2way(unsigned char* out, const unsigned char* in);
 #endif // DISABLE_OPTIMIZED_SHA256
 
 #if defined(__linux__) && defined(ENABLE_POWER8)
-#include <sys/auxv.h>
 namespace sha256_power8
 {
 void Transform_4way(unsigned char* out, const unsigned char* in);

@@ -17,7 +17,6 @@
 #include <policy/policy.h>
 
 #include <cstddef>
-#include <policy/policy.h>
 #include <script/script.h>
 
 namespace node {

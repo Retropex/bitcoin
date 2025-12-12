@@ -21,7 +21,6 @@
 #include <primitives/transaction.h>
 #include <rpc/mempool.h>
 #include <rpc/rawtransaction.h>
-#include <rpc/mempool.h>
 #include <rpc/server.h>
 #include <rpc/server_util.h>
 #include <rpc/util.h>

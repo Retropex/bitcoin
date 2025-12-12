@@ -22,11 +22,16 @@ EXPECTED_CIRCULAR_DEPENDENCIES = (
     "qt/transactiontablemodel -> qt/walletmodel -> qt/transactiontablemodel",
     "wallet/wallet -> wallet/walletdb -> wallet/wallet",
     "kernel/coinstats -> validation -> kernel/coinstats",
-
     # Temporary, removed in followup https://github.com/bitcoin/bitcoin/pull/24230
     "index/base -> node/context -> net_processing -> index/blockfilterindex -> index/base",
+    # Knots-specific circular dependencies
+    "kernel/mempool_options -> policy/policy -> kernel/mempool_options",
+    "policy/policy -> policy/settings -> policy/policy",
+    "qt/bitcoinunits -> qt/guiutil -> qt/bitcoinunits",
+    "qt/guiutil -> qt/qvalidatedlineedit -> qt/guiutil",
+    "qt/psbtoperationsdialog -> qt/walletmodel -> qt/psbtoperationsdialog",
+    "script/interpreter -> script/script -> script/interpreter",
 )
-EXPECTED_CIRCULAR_DEPENDENCIES = ()
 
 CODE_DIR = "src"
 

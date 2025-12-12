@@ -93,7 +93,6 @@ for (abspath, verstr, copyright) in versions:
     footer.flush()
 
     # Call the binaries through help2man to produce a manual page for each of them.
-    if True:
-        outname = os.path.join(mandir, os.path.basename(abspath) + '.1')
-        print(f'Generating {outname}…')
-        subprocess.run([help2man, '-N', '--version-string=' + verstr, '--include=' + footer.name, '-o', outname, abspath], check=True)
+    outname = os.path.join(mandir, os.path.basename(abspath) + '.1')
+    print(f'Generating {outname}…')
+    subprocess.run([help2man, '-N', '--version-string=' + verstr, '--include=' + footer.name, '-o', outname, abspath], check=True)

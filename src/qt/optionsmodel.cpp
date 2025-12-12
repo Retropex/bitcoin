@@ -27,7 +27,6 @@
 #include <node/context.h>
 #include <node/mempool_args.h> // for ParseDustDynamicOpt
 #include <outputtype.h>
-#include <policy/settings.h>
 #include <util/moneystr.h> // for FormatMoney
 #include <util/string.h>
 #include <validation.h>    // For DEFAULT_SCRIPTCHECK_THREADS
