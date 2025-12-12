@@ -17,17 +17,21 @@
 #include <deploymentstatus.h>
 #include <logging.h>
 #include <node/context.h>
+#include <policy/coin_age_priority.h>
 #include <policy/feerate.h>
 #include <policy/policy.h>
 #include <pow.h>
 #include <primitives/transaction.h>
+#include <txmempool.h>
 #include <util/moneystr.h>
 #include <util/time.h>
 #include <validation.h>
 #include <validationinterface.h>
 
 #include <algorithm>
+#include <map>
 #include <utility>
+#include <vector>
 
 namespace node {
 
@@ -506,4 +510,149 @@ void BlockAssembler::addPackageTxs(const CTxMemPool& mempool, int& nPackagesSele
         nDescendantsUpdated += UpdatePackagesForAdded(mempool, ancestors, mapModifiedTx);
     }
 }
+
+// We want to sort transactions by coin age priority
+typedef std::pair<double, CTxMemPool::txiter> TxCoinAgePriority;
+
+struct TxCoinAgePriorityCompare
+{
+    bool operator()(const TxCoinAgePriority& a, const TxCoinAgePriority& b)
+    {
+        if (a.first == b.first)
+            return CompareTxMemPoolEntryByScore()(*(b.second), *(a.second)); //Reverse order to make sort less than
+        return a.first < b.first;
+    }
+};
+
+bool BlockAssembler::isStillDependent(const CTxMemPool& mempool, CTxMemPool::txiter iter)
+{
+    assert(iter != mempool.mapTx.end());
+    for (const auto& parent : iter->GetMemPoolParentsConst()) {
+        auto parent_it = mempool.mapTx.iterator_to(parent);
+        if (!inBlock.count(parent_it)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool BlockAssembler::TestForBlock(CTxMemPool::txiter iter)
+{
+    uint64_t packageSize = iter->GetSizeWithAncestors();
+    int64_t packageSigOps = iter->GetSigOpCostWithAncestors();
+    if (!TestPackage(packageSize, packageSigOps)) {
+        // If the block is so close to full that no more txs will fit
+        // or if we've tried more than 50 times to fill remaining space
+        // then flag that the block is finished
+        if (nBlockWeight > m_options.nBlockMaxWeight - 400 || nBlockSigOpsCost > MAX_BLOCK_SIGOPS_COST - 8 || lastFewTxs > 50) {
+             blockFinished = true;
+             return false;
+        }
+        // Once we're within 4000 weight of a full block, only look at 50 more txs
+        // to try to fill the remaining space.
+        if (nBlockWeight > m_options.nBlockMaxWeight - 4000) {
+            ++lastFewTxs;
+        }
+        return false;
+    }
+
+    CTxMemPool::setEntries package;
+    package.insert(iter);
+    if (!TestPackageTransactions(package)) {
+        if (nBlockSize > m_options.nBlockMaxSize - 100 || lastFewTxs > 50) {
+            blockFinished = true;
+            return false;
+        }
+        if (nBlockSize > m_options.nBlockMaxSize - 1000) {
+            ++lastFewTxs;
+        }
+        return false;
+    }
+
+    return true;
+}
+
+void BlockAssembler::addPriorityTxs(const CTxMemPool& mempool, int &nPackagesSelected)
+{
+    AssertLockHeld(mempool.cs);
+
+    // How much of the block should be dedicated to high-priority transactions,
+    // included regardless of the fees they pay
+    uint64_t nBlockPrioritySize = gArgs.GetIntArg("-blockprioritysize", DEFAULT_BLOCK_PRIORITY_SIZE);
+    if (m_options.nBlockMaxSize < nBlockPrioritySize) {
+        nBlockPrioritySize = m_options.nBlockMaxSize;
+    }
+
+    if (nBlockPrioritySize <= 0) {
+        return;
+    }
+
+    bool fSizeAccounting = fNeedSizeAccounting;
+    fNeedSizeAccounting = true;
+
+    // This vector will be sorted into a priority queue:
+    std::vector<TxCoinAgePriority> vecPriority;
+    TxCoinAgePriorityCompare pricomparer;
+    std::map<CTxMemPool::txiter, double, CompareIteratorByHash> waitPriMap;
+    typedef std::map<CTxMemPool::txiter, double, CompareIteratorByHash>::iterator waitPriIter;
+    double actualPriority = -1;
+
+    vecPriority.reserve(mempool.mapTx.size());
+    for (auto mi = mempool.mapTx.begin(); mi != mempool.mapTx.end(); ++mi) {
+        double dPriority = mi->GetPriority(nHeight);
+        CAmount dummy;
+        mempool.ApplyDeltas(mi->GetTx().GetHash(), dPriority, dummy);
+        vecPriority.emplace_back(dPriority, mi);
+    }
+    std::make_heap(vecPriority.begin(), vecPriority.end(), pricomparer);
+
+    CTxMemPool::txiter iter;
+    while (!vecPriority.empty() && !blockFinished) { // add a tx from priority queue to fill the blockprioritysize
+        iter = vecPriority.front().second;
+        actualPriority = vecPriority.front().first;
+        std::pop_heap(vecPriority.begin(), vecPriority.end(), pricomparer);
+        vecPriority.pop_back();
+
+        // If tx already in block, skip
+        if (inBlock.count(iter)) {
+            assert(false); // shouldn't happen for priority txs
+            continue;
+        }
+
+        // If tx is dependent on other mempool txs which haven't yet been included
+        // then put it in the waitSet
+        if (isStillDependent(mempool, iter)) {
+            waitPriMap.insert(std::make_pair(iter, actualPriority));
+            continue;
+        }
+
+        // If this tx fits in the block add it, otherwise keep looping
+        if (TestForBlock(iter)) {
+            AddToBlock(mempool, iter);
+
+            ++nPackagesSelected;
+
+            // If now that this txs is added we've surpassed our desired priority size
+            // or have dropped below the minimum priority threshold, then we're done adding priority txs
+            if (nBlockSize >= nBlockPrioritySize || actualPriority <= MINIMUM_TX_PRIORITY) {
+                break;
+            }
+
+            // This tx was successfully added, so
+            // add transactions that depend on this one to the priority queue to try again
+            for (const auto& child : iter->GetMemPoolChildrenConst())
+            {
+                auto child_it = mempool.mapTx.iterator_to(child);
+                waitPriIter wpiter = waitPriMap.find(child_it);
+                if (wpiter != waitPriMap.end()) {
+                    vecPriority.emplace_back(wpiter->second, child_it);
+                    std::push_heap(vecPriority.begin(), vecPriority.end(), pricomparer);
+                    waitPriMap.erase(wpiter);
+                }
+            }
+        }
+    }
+    fNeedSizeAccounting = fSizeAccounting;
+}
+
 } // namespace node

@@ -798,7 +798,11 @@ void CTxMemPool::check(const CCoinsViewCache& active_coins_tip, int64_t spendhei
         double priDiff = cachePriority > freshPriority ? cachePriority - freshPriority : freshPriority - cachePriority;
         // Verify that the difference between the on the fly calculation and a fresh calculation
         // is small enough to be a result of double imprecision.
-        assert(priDiff < .0001 * freshPriority + 1);
+        // Skip this check if the chain has been rewound below the cached height (e.g., during reorgs),
+        // since the cached priority may legitimately differ from a fresh calculation in that case.
+        if (spendheight >= static_cast<int64_t>(it->GetCachedHeight())) {
+            assert(priDiff < .0001 * freshPriority + 1);
+        }
         check_total_fee += it->GetFee();
         innerUsage += it->DynamicMemoryUsage();
         const CTransaction& tx = it->GetTx();
@@ -1536,4 +1540,62 @@ void CTxMemPool::ChangeSet::Apply()
     m_to_remove.clear();
     m_entry_vec.clear();
     m_ancestors.clear();
+}
+
+// Coin-age priority methods for CTxMemPoolEntry
+void CTxMemPoolEntry::UpdateCachedPriority(unsigned int currentHeight, CAmount valueInCurrentBlock)
+{
+    int heightDiff = int(currentHeight) - int(cachedHeight);
+    double deltaPriority = ((double)heightDiff*inChainInputValue)/nModSize;
+    cachedPriority += deltaPriority;
+    cachedHeight = currentHeight;
+    inChainInputValue += valueInCurrentBlock;
+    assert(MoneyRange(inChainInputValue));
+}
+
+double CTxMemPoolEntry::GetPriority(unsigned int currentHeight) const
+{
+    // This will only return accurate results when currentHeight >= the heights
+    // at which all the in-chain inputs of the tx were included in blocks.
+    // Typical usage of GetPriority with chainActive.Height() will ensure this.
+    // Handle case where chain has been rewound below the cached height (e.g., during reorgs)
+    if (currentHeight < cachedHeight) {
+        return cachedPriority;
+    }
+    int heightDiff = currentHeight - cachedHeight;
+    double deltaPriority = ((double)heightDiff*inChainInputValue)/nModSize;
+    double dResult = cachedPriority + deltaPriority;
+    if (dResult < 0) // This should only happen if it was called with an invalid height
+        dResult = 0;
+    return dResult;
+}
+
+// Coin-age priority update helper
+namespace {
+struct update_priority
+{
+    update_priority(unsigned int _height, CAmount _value) :
+        height(_height), value(_value)
+    {}
+
+    void operator() (CTxMemPoolEntry &e)
+    { e.UpdateCachedPriority(height, value); }
+
+    private:
+        unsigned int height;
+        CAmount value;
+};
+} // anonymous namespace
+
+void CTxMemPool::UpdateDependentPriorities(const CTransaction &tx, unsigned int nBlockHeight, bool addToChain)
+{
+    LOCK(cs);
+    for (unsigned int i = 0; i < tx.vout.size(); i++) {
+        auto it = mapNextTx.find(COutPoint(tx.GetHash(), i));
+        if (it == mapNextTx.end())
+            continue;
+        uint256 hash = it->second->GetHash();
+        txiter iter = mapTx.find(hash);
+        mapTx.modify(iter, update_priority(nBlockHeight, addToChain ? tx.vout[i].nValue : -tx.vout[i].nValue));
+    }
 }

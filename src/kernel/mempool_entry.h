@@ -190,6 +190,7 @@ public:
     int32_t GetTxWeight() const { return nTxWeight; }
     std::chrono::seconds GetTime() const { return std::chrono::seconds{nTime}; }
     unsigned int GetHeight() const { return entryHeight; }
+    unsigned int GetCachedHeight() const { return cachedHeight; }
     uint64_t GetSequence() const { return entry_sequence; }
     int32_t GetExtraWeight() const { return m_extra_weight; }
     int64_t GetSigOpCost() const { return sigOpCost; }
