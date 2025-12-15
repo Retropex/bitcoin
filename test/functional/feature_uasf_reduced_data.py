@@ -727,7 +727,7 @@ class UASFReducedDataTest(BitcoinTestFramework):
         self.log.info("      This bypasses PolicyScriptChecks but NOT ConsensusScriptChecks")
         result_bypass = node.testmempoolaccept(
             rawtxs=[spending_tx_257.serialize().hex()],
-            ignore_rejects=["non-mandatory-script-verify-flag"]
+            ignore_rejects=["mempool-script-verify-flag-failed"]
         )[0]
 
         # The transaction should still be rejected because ConsensusScriptChecks
