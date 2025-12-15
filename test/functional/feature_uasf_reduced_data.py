@@ -340,7 +340,7 @@ class UASFReducedDataTest(BitcoinTestFramework):
         self.log.info(f"  ✓ Witness v{version} spending correctly rejected ({result['reject-reason']})")
 
         # All undefined versions (v2-v16) are validated identically
-        self.log.info(f"  ✓ Witness versions v2-v16 are all similarly rejected")
+        self.log.info("  ✓ Witness versions v2-v16 are all similarly rejected")
 
     def test_taproot_annex_rejection(self):
         """Test spec 4: Witness stacks with a Taproot annex are invalid."""

@@ -396,7 +396,7 @@ class MaxActivationHeightTest(BitcoinTestFramework):
         assert_equal(node.getblockcount(), 577)
         # Note: Status may still show 'active' but deployment should no longer be enforced
         # This matches the behavior in feature_temporary_deployment.py
-        self.log.info(f"Block 577: Deployment has expired (no longer enforced)")
+        self.log.info("Block 577: Deployment has expired (no longer enforced)")
 
         self.log.info("\n=== TEST 5 COMPLETE ===")
         self.log.info("SUCCESS: Temporary deployment with max_height activated and expired correctly")

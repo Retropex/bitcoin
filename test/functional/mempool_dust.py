@@ -163,7 +163,7 @@ class DustRelayFeeTest(BitcoinTestFramework):
         tx.vout.append(CTxOut(nValue=1000, scriptPubKey=script_34))
         res = node.testmempoolaccept([tx.serialize().hex()])[0]
         assert_equal(res['allowed'], True)
-        self.log.info(f"   ✓ Exactly 34 bytes accepted (boundary)")
+        self.log.info("   ✓ Exactly 34 bytes accepted (boundary)")
 
         # 35 bytes should fail (create a witness program v0 with 33-byte data - invalid but tests size)
         script_35 = CScript([0, bytes(33)])  # OP_0 + 33 bytes = 35 bytes
