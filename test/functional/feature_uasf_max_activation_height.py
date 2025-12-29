@@ -35,16 +35,19 @@ VERSIONBITS_TOP_BITS = 0x20000000
 
 class MaxActivationHeightTest(BitcoinTestFramework):
     def set_test_params(self):
-        self.num_nodes = 5  # 5 nodes for tests 1-5 (test 0 validation is done separately)
+        self.num_nodes = 6  # 6 nodes for tests 1-6 (test 0 validation is done separately)
         self.setup_clean_chain = True
         # NO_TIMEOUT = std::numeric_limits<int64_t>::max() = 9223372036854775807
         NO_TIMEOUT = '9223372036854775807'
+        # INT_MAX = std::numeric_limits<int>::max() = 2147483647
+        INT_MAX = '2147483647'
         self.extra_args = [
             [f'-vbparams=testdummy:0:{NO_TIMEOUT}:0:576'],      # Test 1: max_height=576 (shows full flow)
             ['-vbparams=testdummy:0:999999999999'],              # Test 2: no max_height (uses timeout)
             [f'-vbparams=testdummy:0:{NO_TIMEOUT}:0:576'],      # Test 3: max_height=576 (early activation)
             [f'-vbparams=testdummy:0:{NO_TIMEOUT}:0:432'],      # Test 4: verify permanent ACTIVE
             [f'-vbparams=testdummy:0:{NO_TIMEOUT}:0:432:144'],  # Test 5: max_height + active_duration
+            [f'-vbparams=testdummy:0:999999999999:0:{INT_MAX}:{INT_MAX}:72'],  # Test 6: custom 50% threshold (72/144)
         ]
 
     def setup_network(self):
@@ -400,6 +403,69 @@ class MaxActivationHeightTest(BitcoinTestFramework):
 
         self.log.info("\n=== TEST 5 COMPLETE ===")
         self.log.info("SUCCESS: Temporary deployment with max_height activated and expired correctly")
+
+        # Test 6: Custom per-deployment threshold
+        self.log.info("\n\n=== TEST 6: Custom per-deployment threshold (50% = 72/144 blocks) ===")
+        node = self.nodes[5]
+
+        # This node has threshold=72 (50% of 144 blocks)
+        # Default regtest threshold is 108 (75%), but this deployment should activate at 72
+
+        # Period 0 (0-143): DEFINED
+        self.log.info("Mining period 0 (blocks 0-143) without signaling...")
+        self.mine_blocks(node, 143, signal=False)
+        assert_equal(node.getblockcount(), 143)
+        status, _ = self.get_status(node)
+        assert_equal(status, 'defined')
+
+        # Block 144: Transition to STARTED
+        self.log.info("Mining block 144 to transition to STARTED...")
+        self.mine_blocks(node, 1, signal=False)
+        assert_equal(node.getblockcount(), 144)
+        status, since = self.get_status(node)
+        self.log.info(f"Block 144: Status={status}, Since={since}")
+        assert_equal(status, 'started')
+        assert_equal(since, 144)
+
+        # Period 1 (144-287): Mine exactly 72 signaling blocks (50%)
+        # With custom threshold of 72, this should be enough to lock in
+        self.log.info("Mining period 1 with exactly 72 signaling blocks (50%)...")
+        self.mine_blocks(node, 72, signal=True)   # 72 signaling blocks
+        self.mine_blocks(node, 71, signal=False)  # 71 non-signaling blocks
+        assert_equal(node.getblockcount(), 287)
+        status, since = self.get_status(node)
+        self.log.info(f"Block 287: Status={status}")
+        assert_equal(status, 'started')  # Still started until next period boundary
+
+        # Block 288: Should transition to LOCKED_IN (threshold met in previous period)
+        self.log.info("Mining block 288 to check lock-in...")
+        self.mine_blocks(node, 1, signal=False)
+        assert_equal(node.getblockcount(), 288)
+        status, since = self.get_status(node)
+        self.log.info(f"Block 288: Status={status}, Since={since}")
+        assert_equal(status, 'locked_in')
+        assert_equal(since, 288)
+
+        # Mine through locked_in period to activate
+        self.log.info("Mining through locked_in period (289-431)...")
+        self.mine_blocks(node, 143, signal=False)
+        assert_equal(node.getblockcount(), 431)
+        status, since = self.get_status(node)
+        assert_equal(status, 'locked_in')
+
+        # Block 432: Should transition to ACTIVE
+        self.log.info("Mining block 432 to activate...")
+        self.mine_blocks(node, 1, signal=False)
+        assert_equal(node.getblockcount(), 432)
+        status, since = self.get_status(node)
+        self.log.info(f"Block 432: Status={status}, Since={since}")
+        assert_equal(status, 'active')
+        assert_equal(since, 432)
+
+        self.log.info("\n=== TEST 6 COMPLETE ===")
+        self.log.info("SUCCESS: Deployment activated with custom 50% threshold (72/144 blocks)")
+        self.log.info("- Custom threshold overrode default 75% threshold")
+        self.log.info("- Lock-in occurred with only 50% signaling support")
 
 
 if __name__ == '__main__':
