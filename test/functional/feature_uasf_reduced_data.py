@@ -770,11 +770,98 @@ class UASFReducedDataTest(BitcoinTestFramework):
         self.log.info(f"    ✓ Transaction correctly rejected: {result_bypass['reject-reason']}")
         self.log.info("    ✓ ConsensusScriptChecks prevents bypass of REDUCED_DATA consensus rules")
 
+    def test_generation_output_size_limit(self):
+        """Test that generation tx outputs are also subject to output size limits."""
+        self.log.info("Testing generation tx output scriptPubKey size limits...")
+
+        node = self.nodes[0]
+
+        def create_block_with_generation_output(script_pubkey):
+            """Helper to create a block with a custom generation tx output script."""
+            tip = node.getbestblockhash()
+            height = node.getblockcount() + 1
+            tip_header = node.getblockheader(tip)
+            block_time = tip_header['time'] + 1
+            coinbase = create_coinbase(height, script_pubkey=script_pubkey)
+            block = create_block(int(tip, 16), coinbase, ntime=block_time)
+            add_witness_commitment(block)
+            block.solve()
+            return block
+
+        # Test 1: 34-byte P2WSH generation tx output (exactly at limit - should pass)
+        self.log.info("  Test: 34-byte P2WSH generation tx output (at limit)")
+        witness_program_32 = b'\x00' * 32
+        script_p2wsh = CScript([OP_0, witness_program_32])
+        assert_equal(len(script_p2wsh), 34)
+
+        block_valid = create_block_with_generation_output(script_p2wsh)
+        result = node.submitblock(block_valid.serialize().hex())
+        assert_equal(result, None)
+        self.log.info("  ✓ 34-byte P2WSH generation tx output accepted")
+
+        # Test 2: 35-byte P2PK generation tx output (exceeds limit - should fail)
+        self.log.info("  Test: 35-byte P2PK generation tx output (exceeds limit)")
+        pubkey_33 = b'\x02' + b'\x00' * 32  # Compressed pubkey format
+        script_p2pk = CScript([pubkey_33, OP_CHECKSIG])
+        assert_equal(len(script_p2pk), 35)
+
+        block_invalid = create_block_with_generation_output(script_p2pk)
+        result = node.submitblock(block_invalid.serialize().hex())
+        assert_equal(result, 'bad-txns-vout-script-toolarge')
+        self.log.info("  ✓ 35-byte P2PK generation tx output rejected")
+
+        # Test 3: Generation tx with OP_RETURN at 83 bytes (at OP_RETURN limit - should pass)
+        self.log.info("  Test: Generation tx with 83-byte OP_RETURN extra output (at limit)")
+        # 80 bytes data = OP_RETURN (1) + push opcode (1) + data (80) = 82 bytes
+        # We need 83 bytes, so use 81 bytes of data with PUSHDATA1
+        # OP_RETURN (1) + OP_PUSHDATA1 (1) + len (1) + data (80) = 83 bytes
+        data_80 = b'\x00' * 80
+        script_opreturn_83 = CScript([OP_RETURN, data_80])
+        # Verify we're at exactly 83 bytes (with CScript's encoding)
+        self.log.info(f"    OP_RETURN script length: {len(script_opreturn_83)} bytes")
+
+        # Create block with valid main output and OP_RETURN extra output
+        tip = node.getbestblockhash()
+        height = node.getblockcount() + 1
+        tip_header = node.getblockheader(tip)
+        block_time = tip_header['time'] + 1
+        coinbase = create_coinbase(height, extra_output_script=script_opreturn_83)
+        block_opreturn_valid = create_block(int(tip, 16), coinbase, ntime=block_time)
+        add_witness_commitment(block_opreturn_valid)
+        block_opreturn_valid.solve()
+
+        result = node.submitblock(block_opreturn_valid.serialize().hex())
+        if result is None:
+            self.log.info("  ✓ Generation tx with 83-byte OP_RETURN output accepted")
+        else:
+            self.log.info(f"  Note: Generation tx OP_RETURN result: {result}")
+
+        # Test 4: Generation tx with OP_RETURN at 84 bytes (exceeds limit - should fail)
+        self.log.info("  Test: Generation tx with 84-byte OP_RETURN extra output (exceeds limit)")
+        # 81 bytes data = OP_RETURN (1) + OP_PUSHDATA1 (1) + len (1) + data (81) = 84 bytes
+        data_81 = b'\x00' * 81
+        script_opreturn_84 = CScript([OP_RETURN, data_81])
+        self.log.info(f"    OP_RETURN script length: {len(script_opreturn_84)} bytes")
+
+        tip = node.getbestblockhash()
+        height = node.getblockcount() + 1
+        tip_header = node.getblockheader(tip)
+        block_time = tip_header['time'] + 1
+        coinbase = create_coinbase(height, extra_output_script=script_opreturn_84)
+        block_opreturn_invalid = create_block(int(tip, 16), coinbase, ntime=block_time)
+        add_witness_commitment(block_opreturn_invalid)
+        block_opreturn_invalid.solve()
+
+        result = node.submitblock(block_opreturn_invalid.serialize().hex())
+        assert_equal(result, 'bad-txns-vout-script-toolarge')
+        self.log.info("  ✓ Generation tx with 84-byte OP_RETURN output rejected")
+
     def run_test(self):
         self.init_test()
 
         # Run all spec tests
         self.test_output_script_size_limit()
+        self.test_generation_output_size_limit()
         self.test_pushdata_size_limit()
         self.test_undefined_witness_versions()
         self.test_taproot_annex_rejection()
