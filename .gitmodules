@@ -1,0 +1,3 @@
+[submodule "contrib/guix/packages/start9/start-os"]
+	path = contrib/guix/packages/start9/start-os
+	url = https://github.com/Start9Labs/start-os.git

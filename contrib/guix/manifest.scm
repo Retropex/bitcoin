@@ -22,6 +22,7 @@
              ((gnu packages python-crypto) #:select (python-asn1crypto))
              ((gnu packages tls) #:select (openssl))
              ((gnu packages version-control) #:select (git-minimal))
+             (gnu packages yq)
              (guix build-system cmake)
              (guix build-system gnu)
              (guix build-system python)
@@ -554,6 +555,7 @@ inspecting signatures in Mach-O binaries.")
         imagemagick
         libicns
         librsvg-2.40
+        yq
         ;; Scripting
         python-minimal ;; (3.10)
         ;; Git

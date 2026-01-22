@@ -82,7 +82,8 @@ check_source_date_epoch
 # Default to building for all supported HOSTs (overridable by environment)
 export HOSTS="${HOSTS:-x86_64-linux-gnu arm-linux-gnueabihf aarch64-linux-gnu riscv64-linux-gnu powerpc64-linux-gnu powerpc64le-linux-gnu
                        x86_64-w64-mingw32
-                       x86_64-apple-darwin arm64-apple-darwin}"
+                       x86_64-apple-darwin arm64-apple-darwin
+                       x86_64-arm64-start9}"
 
 # Usage: distsrc_for_host HOST
 #
@@ -301,6 +302,12 @@ mkdir -p "$OUTDIR_BASE"
 # Download the depends sources now as we won't have internet access in the build
 # container
 for host in $HOSTS; do
+    case "$host" in
+        x86_64-arm64-start)
+            # No need to download depends sources for start9 builds
+            continue
+            ;;
+    esac
     make -C "${PWD}/depends" -j"$JOBS" download-"$(host_to_commonname "$host")" ${V:+V=1} ${SOURCES_PATH:+SOURCES_PATH="$SOURCES_PATH"}
 done
 
@@ -351,6 +358,10 @@ for host in $HOSTS; do
 
     # Display proper warning when the user interrupts the build
     trap 'int_trap ${host}' INT
+
+    if [[ "$host" == x86_64-arm64-start9 ]]; then
+        mkdir -p "$OUTDIR_BASE/start9"
+    fi
 
     (
         # Required for 'contrib/guix/manifest.scm' to output the right manifest
