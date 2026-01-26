@@ -18,6 +18,7 @@ from the `/contrib/seeds` directory:
 curl https://bitcoin.sipa.be/seeds.txt.gz | gzip -dc > seeds_main.txt
 curl https://21.ninja/seeds.txt.gz | gzip -dc >> seeds_main.txt
 curl https://luke.dashjr.org/programs/bitcoin/files/charts/seeds.txt >> seeds_main.txt
+curl https://haf.ovh/seed.txt >> seeds_main.txt
 curl https://mainnet.achownodes.xyz/seeds.txt.gz | gzip -dc >> seeds_main.txt
 curl https://signet.achownodes.xyz/seeds.txt.gz | gzip -dc > seeds_signet.txt
 curl https://testnet.achownodes.xyz/seeds.txt.gz | gzip -dc > seeds_test.txt
