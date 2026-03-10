@@ -343,9 +343,42 @@ bool AreInputsStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs,
                 MaybeReject("scriptcheck-sigops");
             }
         }
+
+        if (opts.reject_tokens && IsOPNetWitness(tx.vin[i].scriptWitness)) {
+            MaybeReject("tokens-op-net");
+        }
     }
 
     return true;
+}
+
+bool IsOPNetWitness(const CScriptWitness& witness)
+{
+    const auto& stack = witness.stack;
+    // OP_NET witness structure (see _is() in opnet-node):
+    // https://github.com/btc-vision/opnet-node/blob/0dee2b9a/src/src/blockchain-indexer/processor/transaction/Transaction.ts#L306-L358
+    //   [0] salt (32-128 bytes), [1] sig_a (64 bytes), [2] sig_b (64 bytes),
+    //   [3] tapscript, [4] control block (65 bytes)
+    if (stack.size() != 5) return false;
+    // Control block: 130 hex chars = 65 bytes
+    // https://github.com/btc-vision/opnet-node/blob/0dee2b9a/src/src/blockchain-indexer/processor/transaction/Transaction.ts#L327
+    if (stack[4].size() < 33 || (stack[4].size() - 33) % 32 != 0) return false;
+    // Schnorr signatures: 128 hex chars = 64 bytes each
+    // https://github.com/btc-vision/opnet-node/blob/0dee2b9a/src/src/blockchain-indexer/processor/transaction/Transaction.ts#L322
+    if (stack[1].size() != 64 || stack[2].size() != 64) return false;
+    // OP_NET decompiles the tapscript and scans all elements for the 2-byte magic "op".
+    // The magic appears after variable-length header/key data, not at a fixed offset.
+    // In raw script bytes, this 2-byte push is encoded as 0x02 0x6f 0x70.
+    // https://github.com/btc-vision/opnet-node/blob/0dee2b9a/src/src/blockchain-indexer/processor/transaction/Transaction.ts#L36
+    // https://github.com/btc-vision/opnet-node/blob/0dee2b9a/src/src/blockchain-indexer/processor/transaction/Transaction.ts#L261-L266
+    const auto& tapscript = stack[3];
+    if (tapscript.size() < 3) return false;
+    for (size_t j = 0; j + 2 < tapscript.size(); ++j) {
+        if (tapscript[j] == 0x02 && tapscript[j + 1] == 0x6f && tapscript[j + 2] == 0x70) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs, const std::string& reason_prefix, std::string& out_reason, const ignore_rejects_type& ignore_rejects)
