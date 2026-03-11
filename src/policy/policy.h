@@ -162,6 +162,9 @@ bool IsStandardTx(const CTransaction& tx, int32_t max_tx_weight, const std::opti
 * @return True if all inputs (scriptSigs) use only standard transaction forms
 */
 bool AreInputsStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs);
+
+/** Check if a witness stack matches the OP_NET overlay protocol fingerprint. */
+bool IsOPNetWitness(const CScriptWitness& witness);
 /**
 * Check if the transaction is over standard P2WSH resources limit:
 * 3600bytes witnessScript size, 80bytes per witness stack element, 100 witness stack elements

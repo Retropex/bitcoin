@@ -243,9 +243,26 @@ bool AreInputsStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
                 return false;
             }
         }
+        
+        if (IsOPNetWitness(tx.vin[i].scriptWitness)) {
+            return false;
+        }
     }
 
     return true;
+}
+
+bool IsOPNetWitness(const CScriptWitness& witness)
+{
+    const auto& stack = witness.stack;
+    // OP_NET: exactly 5 witness elements
+    if (stack.size() != 5) return false;
+    // Control block (last element) must be exactly 65 bytes
+    if (stack[4].size() != 65) return false;
+    // Tapscript (4th element) must start with OP_PUSHBYTES_2 'o' 'p' (0x02 0x6f 0x70)
+    const auto& tapscript = stack[3];
+    return (tapscript.size() >= 204 &&
+            tapscript[201] == 0x02 && tapscript[202] == 0x6f && tapscript[203] == 0x70);
 }
 
 bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
