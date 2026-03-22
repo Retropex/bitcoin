@@ -161,11 +161,18 @@ int64_t GetTransactionSigOpCost(const CTransaction& tx, const CCoinsViewCache& i
     return nSigOps;
 }
 
-bool Consensus::CheckOutputSizes(const CTransaction& tx, TxValidationState& state)
+bool Consensus::CheckOutputSizes(const CTransaction& tx, TxValidationState& state, bool is_signet)
 {
     for (const auto& txout : tx.vout) {
         if (txout.scriptPubKey.empty()) continue;
-        if (txout.scriptPubKey.size() > ((txout.scriptPubKey[0] == OP_RETURN) ? MAX_OUTPUT_DATA_SIZE : MAX_OUTPUT_SCRIPT_SIZE)) {
+        if (txout.scriptPubKey[0] == OP_RETURN) {
+            if (txout.scriptPubKey.size() > MAX_OUTPUT_DATA_SIZE) {
+                if (tx.IsCoinBase() && is_signet) {
+                    continue;
+                }
+                return state.Invalid(TxValidationResult::TX_PREMATURE_SPEND, "bad-txns-vout-script-toolarge");
+            }
+        } else if (txout.scriptPubKey.size() > MAX_OUTPUT_SCRIPT_SIZE) {
             return state.Invalid(TxValidationResult::TX_PREMATURE_SPEND, "bad-txns-vout-script-toolarge");
         }
     }
@@ -181,7 +188,7 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
     }
 
     // NOTE: CheckTransaction is arguably the more logical place to do this, but it's context-independent, so this is probably the next best place for now
-    if (rules.test(CheckTxInputsRules::OutputSizeLimit) && !CheckOutputSizes(tx, state)) {
+    if (rules.test(CheckTxInputsRules::OutputSizeLimit) && !CheckOutputSizes(tx, state, rules.test(CheckTxInputsRules::SignetCoinbaseExemption))) {
         return false;
     }
 

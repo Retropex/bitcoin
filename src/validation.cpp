@@ -987,7 +987,7 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     // The mempool holds txs for the next block, so pass height+1 to CheckTxInputs
     const auto block_height_current = m_active_chainstate.m_chain.Height();
     const auto block_height_next = block_height_current + 1;
-    if (!Consensus::CheckTxInputs(tx, state, m_view, block_height_next, ws.m_base_fees, CheckTxInputsRules::OutputSizeLimit)) {
+    if (!Consensus::CheckTxInputs(tx, state, m_view, block_height_next, ws.m_base_fees, CheckTxInputsRules{CheckTxInputsRules::OutputSizeLimit} | CheckTxInputsRules{args.m_chainparams.GetConsensus().signet_blocks ? CheckTxInputsRules::SignetCoinbaseExemption : CheckTxInputsRules::None})) {
         return false; // state filled in by CheckTxInputs
     }
 
@@ -2903,12 +2903,12 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         ? m_chainman.m_versionbitscache.StateSinceHeight(pindex->pprev, params.GetConsensus(), Consensus::DEPLOYMENT_REDUCED_DATA)
         : std::numeric_limits<int>::max();
 
-    const CheckTxInputsRules chk_input_rules{DeploymentActiveAt(*pindex, m_chainman, Consensus::DEPLOYMENT_REDUCED_DATA) ? CheckTxInputsRules::OutputSizeLimit : CheckTxInputsRules::None};
+    const CheckTxInputsRules chk_input_rules{CheckTxInputsRules{DeploymentActiveAt(*pindex, m_chainman, Consensus::DEPLOYMENT_REDUCED_DATA) ? CheckTxInputsRules::OutputSizeLimit : CheckTxInputsRules::None} | CheckTxInputsRules{params.GetConsensus().signet_blocks ? CheckTxInputsRules::SignetCoinbaseExemption : CheckTxInputsRules::None}};
 
     // Check generation tx output sizes if REDUCED_DATA is active
     if (chk_input_rules.test(CheckTxInputsRules::OutputSizeLimit)) {
         TxValidationState tx_state;
-        if (!Consensus::CheckOutputSizes(*block.vtx[0], tx_state)) {
+        if (!Consensus::CheckOutputSizes(*block.vtx[0], tx_state, params.GetConsensus().signet_blocks)) {
             return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
                                  tx_state.GetRejectReason(),
                                  tx_state.GetDebugMessage() + " in generation tx " + block.vtx[0]->GetHash().ToString());

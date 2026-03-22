@@ -25,6 +25,7 @@ class CheckTxInputsRules {
     enum class Rule {
         None = 0,
         OutputSizeLimit = 1 << 0,
+        SignetCoinbaseExemption = 1 << 1,
     };
 
 public:
@@ -47,7 +48,7 @@ namespace Consensus {
  * Regular outputs must be <= MAX_OUTPUT_SCRIPT_SIZE (34 bytes).
  * OP_RETURN outputs must be <= MAX_OUTPUT_DATA_SIZE (83 bytes).
  */
-bool CheckOutputSizes(const CTransaction& tx, TxValidationState& state);
+bool CheckOutputSizes(const CTransaction& tx, TxValidationState& state, bool is_signet = false);
 
 /**
  * Check whether all inputs of this transaction are valid (no double spends and amounts)
